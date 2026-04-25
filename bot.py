@@ -5,6 +5,8 @@ from telegram import Update, MessageEntity
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 import aiohttp
 from urllib.parse import urlparse
+import aiofiles
+import time
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -23,53 +25,38 @@ def get_filename_from_url(url: str):
     name = os.path.basename(path)
     return name or "downloaded_file"
 
-
-async def download_file(url: str, output_path: str):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, allow_redirects=True) as resp:
-
-            resp.raise_for_status()
-
-            content_type = resp.headers.get("Content-Type", "")
-
-            if "text/html" in content_type:
-                text = await resp.text()
-                raise ValueError(
-                    "URL returned HTML instead of a file."
-                    "Likely a redirect/login page or invalid direct download link."
-                )
-
-            with open(output_path, "wb") as f:
-                async for chunk in resp.content.iter_chunked(8192):
-                    f.write(chunk)
-
-            return resp.headers
-
 async def grabLink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url: str = update.message.text # type: ignore
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Download started...") # type: ignore
+    startTime = time.time()
 
-    async with aiohttp.ClientSession() as session:
+    timeout = aiohttp.ClientTimeout(total=None, sock_connect=30)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.get(url, allow_redirects=True) as resp:
 
             resp.raise_for_status()
 
-            filename = get_filename_from_url(url)
-
-            if "text/html" in resp.headers.get("Content-Type", ""):
+            contentType = resp.headers.get("Content-Type", "")
+            if "text/html" in contentType:
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id, # type: ignore
-                    text="Make sure the link is a download link."
+                    text="Make sure the link is a direct file download."
                 )
                 return
 
-            with open(filename, "wb") as f:
-                async for chunk in resp.content.iter_chunked(8192):
-                    f.write(chunk)
+            filename = get_filename_from_url(url)
+
+            async with aiofiles.open(filename, "wb") as f:
+                async for chunk in resp.content.iter_chunked(256 * 1024):
+                    await f.write(chunk)
+
+    elapsedTime = time.time() - startTime
+    minutes = int(elapsedTime // 60)
+    seconds = int(elapsedTime % 60)
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id, # type: ignore
-        text=f"Download finished: {filename}"
+        text= f"Download finished: {filename} \nTime: {minutes}m {seconds}s"
     )
 
 load_dotenv()
