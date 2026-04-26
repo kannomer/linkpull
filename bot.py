@@ -48,7 +48,7 @@ async def grabLink(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
             totalSize = resp.content_length
-            filename = get_filename_from_url(url)
+            filename = os.path.join("downloads", get_filename_from_url(url))
 
             async with aiofiles.open(filename, "wb") as f:
                 async for chunk in resp.content.iter_chunked(1024 * 1024):
@@ -85,7 +85,7 @@ async def grabLink(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         try:
                             await initialMessage.edit_text(text)
                         except Exception:
-                            pass  # ignore rate limit / edit conflicts
+                            pass
 
                         lastUpdateTime = now
 
