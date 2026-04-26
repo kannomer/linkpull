@@ -27,8 +27,10 @@ def get_filename_from_url(url: str):
 
 async def grabLink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url: str = update.message.text # type: ignore
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="Download started...") # type: ignore
+    initialMessage = await context.bot.send_message(chat_id=update.effective_chat.id, text="Starting download...") # type: ignore
     startTime = time.time()
+    lastUpdateTime = startTime
+    downloaded = 0
 
     timeout = aiohttp.ClientTimeout(total=None, sock_connect=30)
     async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -44,11 +46,47 @@ async def grabLink(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
 
+            totalSize = resp.content_length
             filename = get_filename_from_url(url)
 
             async with aiofiles.open(filename, "wb") as f:
                 async for chunk in resp.content.iter_chunked(256 * 1024):
                     await f.write(chunk)
+                    downloaded += len(chunk)
+
+                    now = time.time()
+                    if now - lastUpdateTime >= 10:
+                        elapsed = now - startTime
+                        speed = (speed * 0.7) + ((downloaded / elapsed) * 0.3)
+
+                        if totalSize:
+                            percent = downloaded / totalSize * 100
+                            remaining = totalSize - downloaded
+
+                            etaSeconds = remaining / speed if speed > 0 else 0
+                            etaMinutes = int(etaSeconds // 60)
+                            etaSecs = int(etaSeconds % 60)
+                            text = (
+                                f"Downloading...\n"
+                                f"{percent:.1f}%\n"
+                                f"{downloaded / (1024*1024):.2f} MB / "
+                                f"{totalSize / (1024*1024):.2f} MB\n"
+                                f"{speed / (1024*1024):.2f} MB/s\n"
+                                f"ETA: {etaMinutes}m {etaSecs}s"
+                            )
+                        else:
+                            text = (
+                                f"Downloading...\n"
+                                f"{downloaded / (1024*1024):.2f} MB\n"
+                                f"{speed / (1024*1024):.2f} MB/s"
+                            )
+
+                        try:
+                            await initialMessage.edit_text(text)
+                        except Exception:
+                            pass  # ignore rate limit / edit conflicts
+
+                        lastUpdateTime = now
 
     elapsedTime = time.time() - startTime
     minutes = int(elapsedTime // 60)
