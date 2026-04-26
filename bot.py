@@ -33,7 +33,8 @@ async def grabLink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     downloaded = 0
 
     timeout = aiohttp.ClientTimeout(total=None, sock_connect=30)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
+    connector = aiohttp.TCPConnector(limit=0, ttl_dns_cache=300)
+    async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
         async with session.get(url, allow_redirects=True) as resp:
 
             resp.raise_for_status()
@@ -50,14 +51,14 @@ async def grabLink(update: Update, context: ContextTypes.DEFAULT_TYPE):
             filename = get_filename_from_url(url)
 
             async with aiofiles.open(filename, "wb") as f:
-                async for chunk in resp.content.iter_chunked(256 * 1024):
+                async for chunk in resp.content.iter_chunked(1024 * 1024):
                     await f.write(chunk)
                     downloaded += len(chunk)
 
                     now = time.time()
                     if now - lastUpdateTime >= 10:
                         elapsed = now - startTime
-                        speed = (speed * 0.7) + ((downloaded / elapsed) * 0.3)
+                        speed = downloaded / elapsed if elapsed > 0 else 0
 
                         if totalSize:
                             percent = downloaded / totalSize * 100
